@@ -8,12 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('personal_access_tokens', function (Blueprint $table): void {
+        Schema::create('user_api_tokens', function (Blueprint $table): void {
             $table->id();
-            $table->morphs('tokenable');
-            $table->string('name');
-            $table->string('token', 64)->unique();
-            $table->text('abilities')->nullable();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->string('token_hash', 64)->unique();
+            $table->string('name', 100)->default('default');
             $table->timestamp('last_used_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
@@ -22,6 +21,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('personal_access_tokens');
+        Schema::dropIfExists('user_api_tokens');
     }
 };
