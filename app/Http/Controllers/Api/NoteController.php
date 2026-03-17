@@ -13,7 +13,9 @@ class NoteController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = DB::table('notes')->orderByDesc('updated_at');
+        $query = DB::table('notes')
+            ->where('user_id', $request->user()->id)
+            ->orderByDesc('updated_at');
 
         if ($request->filled('search')) {
             $search = (string) $request->query('search');
@@ -40,11 +42,15 @@ class NoteController extends Controller
         try {
             $id = DB::table('notes')->insertGetId([
                 ...$validated,
+                'user_id' => $request->user()->id,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-            $note = DB::table('notes')->where('id', $id)->first();
+            $note = DB::table('notes')
+                ->where('id', $id)
+                ->where('user_id', $request->user()->id)
+                ->first();
             DB::commit();
 
             return response()->json($note, 201);
@@ -55,9 +61,12 @@ class NoteController extends Controller
         }
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
-        $note = DB::table('notes')->where('id', $id)->first();
+        $note = DB::table('notes')
+            ->where('id', $id)
+            ->where('user_id', $request->user()->id)
+            ->first();
 
         if (! $note) {
             return response()->json(['message' => 'Not Found'], 404);
@@ -79,18 +88,28 @@ class NoteController extends Controller
         try {
             $updated = DB::table('notes')
                 ->where('id', $id)
+                ->where('user_id', $request->user()->id)
                 ->update([
                     ...$validated,
                     'updated_at' => now(),
                 ]);
 
-            if ($updated === 0 && ! DB::table('notes')->where('id', $id)->exists()) {
+            if (
+                $updated === 0 &&
+                ! DB::table('notes')
+                    ->where('id', $id)
+                    ->where('user_id', $request->user()->id)
+                    ->exists()
+            ) {
                 DB::rollBack();
 
                 return response()->json(['message' => 'Not Found'], 404);
             }
 
-            $updatedNote = DB::table('notes')->where('id', $id)->first();
+            $updatedNote = DB::table('notes')
+                ->where('id', $id)
+                ->where('user_id', $request->user()->id)
+                ->first();
             DB::commit();
 
             return response()->json($updatedNote);
@@ -101,12 +120,15 @@ class NoteController extends Controller
         }
     }
 
-    public function destroy(int $id): Response|JsonResponse
+    public function destroy(Request $request, int $id): Response|JsonResponse
     {
         DB::beginTransaction();
 
         try {
-            $deleted = DB::table('notes')->where('id', $id)->delete();
+            $deleted = DB::table('notes')
+                ->where('id', $id)
+                ->where('user_id', $request->user()->id)
+                ->delete();
 
             if ($deleted === 0) {
                 DB::rollBack();
@@ -124,10 +146,11 @@ class NoteController extends Controller
         }
     }
 
-    public function categories(): JsonResponse
+    public function categories(Request $request): JsonResponse
     {
         $categories = DB::table('notes')
             ->select('category')
+            ->where('user_id', $request->user()->id)
             ->distinct()
             ->orderBy('category')
             ->pluck('category');
