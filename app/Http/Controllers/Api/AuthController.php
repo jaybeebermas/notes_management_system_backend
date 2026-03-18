@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -20,7 +21,17 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'min:8'],
         ]);
 
-        $user = User::query()->create($validated);
+        DB::beginTransaction();
+        try {
+            $user = User::query()->create($validated);
+            DB::commit();
+        } catch (Throwable $th) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to create account.',
+            ], 500);
+        }
 
         return response()->json([
             'message' => 'Account created successfully.',
@@ -46,15 +57,7 @@ class AuthController extends Controller
             ]);
         }
 
-        $plainToken = bin2hex(random_bytes(32));
-
-        DB::table('user_api_tokens')->insert([
-            'user_id' => $user->id,
-            'token_hash' => hash('sha256', $plainToken),
-            'name' => 'web',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $plainToken = $user->createToken('web')->plainTextToken;
 
         return response()->json([
             'token' => $plainToken,
@@ -80,12 +83,7 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $plainToken = $request->bearerToken();
-        if ($plainToken) {
-            DB::table('user_api_tokens')
-                ->where('token_hash', hash('sha256', $plainToken))
-                ->delete();
-        }
+        $request->user()?->currentAccessToken()?->delete();
 
         return response()->json(['message' => 'Logged out successfully.']);
     }
