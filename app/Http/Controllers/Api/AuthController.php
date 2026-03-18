@@ -60,29 +60,17 @@ class AuthController extends Controller
             ]);
         }
 
-        DB::beginTransaction();
+        $plainToken = $user->createToken('web')->plainTextToken;
 
-        try {
-            $plainToken = $user->createToken('web')->plainTextToken;
-
-            DB::commit();
-
-            return response()->json([
-                'token' => $plainToken,
-                'token_type' => 'Bearer',
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                ],
-            ]);
-        } catch (Throwable $th) {
-            DB::rollBack();
-
-            return response()->json([
-                'message' => 'Login failed.',
-            ], 500);
-        }
+        return response()->json([
+            'token' => $plainToken,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+        ]);
     }
 
     public function me(Request $request): JsonResponse
