@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -20,16 +21,29 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'min:8'],
         ]);
 
-        $user = User::query()->create($validated);
+        DB::beginTransaction();
 
-        return response()->json([
-            'message' => 'Account created successfully.',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
+        try {
+            $user = User::query()->create($validated);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Account created successfully.',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                ],
+            ], 201);
+        } catch (Throwable $th) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to create account.',
             ],
-        ], 201);
+            500);
+        }
     }
 
     public function login(Request $request): JsonResponse
@@ -46,24 +60,29 @@ class AuthController extends Controller
             ]);
         }
 
-        $plainToken = bin2hex(random_bytes(32));
-        DB::table('user_api_tokens')->insert([
-            'user_id' => $user->id,
-            'token_hash' => hash('sha256', $plainToken),
-            'name' => 'web',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        DB::beginTransaction();
 
-        return response()->json([
-            'token' => $plainToken,
-            'token_type' => 'Bearer',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-        ]);
+        try {
+            $plainToken = $user->createToken('web')->plainTextToken;
+
+            DB::commit();
+
+            return response()->json([
+                'token' => $plainToken,
+                'token_type' => 'Bearer',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                ],
+            ]);
+        } catch (Throwable $th) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Login failed.',
+            ], 500);
+        }
     }
 
     public function me(Request $request): JsonResponse
@@ -79,13 +98,20 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $plainToken = $request->bearerToken();
-        if ($plainToken) {
-            DB::table('user_api_tokens')
-                ->where('token_hash', hash('sha256', $plainToken))
-                ->delete();
-        }
+        DB::beginTransaction();
 
-        return response()->json(['message' => 'Logged out successfully.']);
+        try {
+            $request->user()?->currentAccessToken()?->delete();
+
+            DB::commit();
+
+            return response()->json(['message' => 'Logged out successfully.']);
+        } catch (Throwable $th) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Logout failed.',
+            ], 500);
+        }
     }
 }
